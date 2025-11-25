@@ -1,0 +1,6 @@
+pandas
+numpy
+plotly
+streamlit
+scipy
+kaleido # Recommended for graph export (PNG)
