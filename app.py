@@ -156,7 +156,7 @@ except ValueError:
 # --- Peak detection settings ---
 prominence_value = 0.50  # FIXED PROMINENCE
 time_distance = 0.45
-MIN_ACCELERATION_PROTRUSION = 2.0
+MIN_ACCELERATION_PROTRUSION = 1.5  # Changed from 2.0 to 1.5
 
 # --- Automatic foot assignment ---
 if len(dfs) == 2:
@@ -188,7 +188,7 @@ for trace in fig.data:
     if trace.name in file_color_map:
         trace.line.color = file_color_map[trace.name]
 
-# --- Peaks plotting ---
+# --- Peaks plotting with distance in hover text ---
 all_peaks_df = []
 for i, (label, df) in enumerate(dfs.items()):
     sampling_freq = 1 / df[time_col].diff().mean() if df[time_col].diff().mean() > 0 else 200
@@ -200,9 +200,12 @@ for i, (label, df) in enumerate(dfs.items()):
 
     if not df_peaks.empty:
         df_peaks['Peak A_com'] = df_peaks['A_com']
-        df_peaks = df_peaks[[time_col, 'Peak A_com', 'file_label']]
+        # Calculate distance to previous peak
+        df_peaks['Distance (s)'] = df_peaks[time_col].diff()
+        df_peaks = df_peaks[[time_col, 'Peak A_com', 'Distance (s)', 'file_label']]
         all_peaks_df.append(df_peaks)
 
+        # Add markers with distance in hover text
         fig.add_scatter(
             x=df_peaks[time_col],
             y=df_peaks['Peak A_com'],
@@ -212,8 +215,14 @@ for i, (label, df) in enumerate(dfs.items()):
             visible='legendonly' if len(dfs) > 1 else True,
             marker=dict(color=file_color_map.get(label, None), size=8, symbol='circle', line=dict(width=1, color='black')),
             hoverinfo='text',
-            hovertext=[f'{label} ({foot_labels[label]}) Peak A_com: {v:.3f}<br>Time: {t:.3f}s' 
-                       for v, t in zip(df_peaks['Peak A_com'], df_peaks[time_col])]
+            hovertext=[
+                f"{label} ({foot_labels[label]})<br>"
+                f"Peak A_com: {v:.3f}<br>"
+                f"Time: {t:.3f}s<br>"
+                f"Distance from previous peak: {d:.3f}s" if not pd.isna(d) else
+                f"{label} ({foot_labels[label]})<br>Peak A_com: {v:.3f}<br>Time: {t:.3f}s<br>Distance from previous peak: N/A"
+                for v, t, d in zip(df_peaks['Peak A_com'], df_peaks[time_col], df_peaks['Distance (s)'])
+            ]
         )
 
 fig.update_xaxes(range=[start_time, end_time])
@@ -223,20 +232,20 @@ st.plotly_chart(fig)
 if len(dfs) == 2:
     st.markdown(f"**Line Colors:** 🖤 Black = Left Foot ({left_foot_file}), 💚 Green = Right Foot ({right_foot_file})")
 
-# --- Peak Summary with split tables ---
+# --- Peak Summary with distance column ---
 if all_peaks_df:
     final_peaks_df = pd.concat(all_peaks_df, ignore_index=True)
 
     if len(dfs) == 1:
         st.info(f"Detected **{len(final_peaks_df)}** significant protrusions (peaks, A_com > {MIN_ACCELERATION_PROTRUSION}).")
         st.subheader("Protrusion Peak Data")
-        st.dataframe(final_peaks_df[[time_col, 'Peak A_com', 'file_label']], use_container_width=True)
+        st.dataframe(final_peaks_df[[time_col, 'Peak A_com', 'Distance (s)', 'file_label']], use_container_width=True)
         st.caption("Peaks filtered by minimum acceleration and separation distance.")
     else:
         for label, foot in foot_labels.items():
             df_table = final_peaks_df[final_peaks_df['file_label'] == label].copy()
             st.subheader(f"{foot} Peak Protrusions ({label})")
-            st.dataframe(df_table[[time_col, 'Peak A_com']], use_container_width=True)
+            st.dataframe(df_table[[time_col, 'Peak A_com', 'Distance (s)']], use_container_width=True)
         st.markdown("Peaks filtered by minimum acceleration and separation distance.")
         info_text = "Detected significant protrusions:\n"
         for label, df in dfs.items():
